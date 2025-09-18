@@ -10,7 +10,7 @@ const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
 const SOCKET_SECRET_KEY = process.env.SOCKET_SECRET_KEY;
 
 const dev = process.env.NODE_ENV !== "production";
-const hostname = process.env.HOSTNAME || "localhost";
+const hostname = process.env.HOSTNAME || "0.0.0.0"; // Important for Render
 
 console.log("🔧 Environment Configuration:");
 console.log(`   - Environment: ${dev ? "development" : "production"}`);
@@ -114,8 +114,8 @@ function emitOrderAccepted(payload: { orderId: string }): void {
   );
 }
 
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Socket server running on port ${PORT}`);
+httpServer.listen(PORT, hostname, () => {
+  console.log(`🚀 Socket server running on ${hostname}:${PORT}`);
   console.log(`🔒 Accepting connections from: ${CLIENT_URL}`);
 });
 
