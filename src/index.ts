@@ -10,7 +10,7 @@ const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
 const SOCKET_SECRET_KEY = process.env.SOCKET_SECRET_KEY;
 
 const dev = process.env.NODE_ENV !== "production";
-const hostname = process.env.HOSTNAME || "0.0.0.0"; // Important for Render
+const hostname = process.env.HOSTNAME || "0.0.0.0";
 
 console.log("🔧 Environment Configuration:");
 console.log(`   - Environment: ${dev ? "development" : "production"}`);
@@ -26,9 +26,9 @@ if (!SOCKET_SECRET_KEY) {
 const app = express();
 const httpServer = http.createServer(app);
 
-// Configure CORS - more permissive for development
+// Configure CORS
 const corsOptions = {
-  origin: dev ? "*" : CLIENT_URL, // Allow all origins in development
+  origin: dev ? "*" : CLIENT_URL,
   methods: ["GET", "POST"],
   credentials: true,
 };
@@ -36,9 +36,21 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Add a health check endpoint
+// Health check endpoint
 app.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  res.status(200).json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+// Keep-alive endpoint for free tier
+app.get("/keep-alive", (req, res) => {
+  res.status(200).json({
+    message: "Server is alive",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
@@ -47,7 +59,6 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     methods: ["GET", "POST"],
     credentials: true,
   },
-  // Add connection timeout settings
   pingTimeout: 60000,
   pingInterval: 25000,
 });
@@ -95,7 +106,6 @@ io.on("connection", (socket) => {
     console.log(`🔌 Client disconnected: ${socket.id}, reason: ${reason}`);
   });
 
-  // Add error handling
   socket.on("error", (error) => {
     console.error(`🔌 Socket error for ${socket.id}:`, error);
   });
@@ -114,9 +124,35 @@ function emitOrderAccepted(payload: { orderId: string }): void {
   );
 }
 
+// --- Keep-Alive Mechanism for Free Tier ---
+if (!dev) {
+  const KEEP_ALIVE_INTERVAL = 10 * 60 * 1000; // 10 minutes
+
+  const keepAlive = async () => {
+    try {
+      const response = await fetch(`http://localhost:${PORT}/keep-alive`);
+      if (response.ok) {
+        console.log("🔄 Keep-alive ping successful");
+      }
+    } catch (error) {
+      console.log("🔄 Keep-alive ping failed (expected during startup)");
+    }
+  };
+
+  // Start keep-alive after server is running
+  setTimeout(() => {
+    keepAlive();
+    setInterval(keepAlive, KEEP_ALIVE_INTERVAL);
+    console.log("🔄 Keep-alive mechanism started (10min intervals)");
+  }, 60000); // Start after 1 minute
+}
+
 httpServer.listen(PORT, hostname, () => {
   console.log(`🚀 Socket server running on ${hostname}:${PORT}`);
   console.log(`🔒 Accepting connections from: ${CLIENT_URL}`);
+  if (!dev) {
+    console.log("🔄 Keep-alive enabled for free tier hosting");
+  }
 });
 
 // Track if shutdown is already in progress
@@ -142,19 +178,23 @@ async function gracefulShutdown(signal: string) {
       });
     });
 
-    // Close HTTP server
-    console.log("Closing HTTP server...");
-    await new Promise<void>((resolve, reject) => {
-      httpServer.close((err) => {
-        if (err) {
-          console.error("Error closing HTTP server:", err);
-          reject(err);
-        } else {
-          console.log("HTTP server closed");
-          resolve();
-        }
+    // Close HTTP server (check if it's still running first)
+    if (httpServer.listening) {
+      console.log("Closing HTTP server...");
+      await new Promise<void>((resolve, reject) => {
+        httpServer.close((err) => {
+          if (err) {
+            console.error("Error closing HTTP server:", err);
+            reject(err);
+          } else {
+            console.log("HTTP server closed");
+            resolve();
+          }
+        });
       });
-    });
+    } else {
+      console.log("HTTP server was already closed");
+    }
 
     console.log("Graceful shutdown completed");
     process.exit(0);
