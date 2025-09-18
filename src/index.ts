@@ -119,17 +119,62 @@ httpServer.listen(PORT, hostname, () => {
   console.log(`🔒 Accepting connections from: ${CLIENT_URL}`);
 });
 
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("SIGTERM received, shutting down gracefully");
-  httpServer.close(() => {
-    console.log("Server closed");
-  });
+// Track if shutdown is already in progress
+let isShuttingDown = false;
+
+// Graceful shutdown function
+async function gracefulShutdown(signal: string) {
+  if (isShuttingDown) {
+    console.log(`${signal} received again, force exiting...`);
+    process.exit(1);
+  }
+
+  isShuttingDown = true;
+  console.log(`${signal} received, shutting down gracefully...`);
+
+  try {
+    // Close socket.io server first
+    console.log("Closing Socket.IO server...");
+    await new Promise<void>((resolve) => {
+      io.close(() => {
+        console.log("Socket.IO server closed");
+        resolve();
+      });
+    });
+
+    // Close HTTP server
+    console.log("Closing HTTP server...");
+    await new Promise<void>((resolve, reject) => {
+      httpServer.close((err) => {
+        if (err) {
+          console.error("Error closing HTTP server:", err);
+          reject(err);
+        } else {
+          console.log("HTTP server closed");
+          resolve();
+        }
+      });
+    });
+
+    console.log("Graceful shutdown completed");
+    process.exit(0);
+  } catch (error) {
+    console.error("Error during graceful shutdown:", error);
+    process.exit(1);
+  }
+}
+
+// Register shutdown handlers (only once)
+process.once("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.once("SIGINT", () => gracefulShutdown("SIGINT"));
+
+// Handle uncaught exceptions
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception:", error);
+  gracefulShutdown("UNCAUGHT_EXCEPTION");
 });
 
-process.on("SIGINT", () => {
-  console.log("SIGINT received, shutting down gracefully");
-  httpServer.close(() => {
-    console.log("Server closed");
-  });
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  gracefulShutdown("UNHANDLED_REJECTION");
 });
