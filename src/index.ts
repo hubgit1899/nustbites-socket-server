@@ -1,3 +1,5 @@
+// server/index.ts
+
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
@@ -81,6 +83,15 @@ app.post("/emit", (req, res) => {
     case "order_accepted":
       emitOrderAccepted(data);
       break;
+    // 👇 NEW: Handle targeted status updates
+    case "order_status_update":
+      if (!data.riderId || !data.payload) {
+        return res
+          .status(400)
+          .send("Missing riderId or payload for status update");
+      }
+      emitOrderStatusUpdate(data.riderId, data.payload);
+      break;
     default:
       return res.status(400).send("Invalid event name");
   }
@@ -91,6 +102,39 @@ app.post("/emit", (req, res) => {
 // --- Socket.IO Connection Logic ---
 io.on("connection", (socket) => {
   console.log(`🔌 Client connected: ${socket.id}`);
+
+  // 👇 NEW: Listen for rider identification
+  socket.on("authenticate_rider", (riderId: string) => {
+    if (riderId) {
+      // Join a room named after the rider's permanent ID
+      socket.join(riderId);
+      console.log(
+        `✅ Rider with ID ${riderId} authenticated and joined their private room.`
+      );
+    }
+  });
+
+  socket.on("join_order_room", (orderId: string) => {
+    socket.join(orderId);
+    console.log(`🤝 Client ${socket.id} joined room for order: ${orderId}`);
+  });
+
+  // 👇 MODIFIED: Replace the old location listener with the new batch listener.
+  socket.on("rider_sends_batch_location", (data) => {
+    const { orderIds, location } = data;
+
+    // This is the core logic: Loop through the array of order IDs
+    // and emit the same location update to each corresponding room.
+    orderIds.forEach((orderId) => {
+      io.to(orderId).emit("rider_location_update", location);
+    });
+
+    // Optional: Log only once per batch for cleaner logs
+    console.log(
+      `📍 Rider location for orders [${orderIds.join(", ")}]:`,
+      location
+    );
+  });
 
   socket.on("join_orders_feed", () => {
     socket.join(ORDERS_ROOM);
@@ -121,6 +165,17 @@ function emitOrderAccepted(payload: { orderId: string }): void {
   io.to(ORDERS_ROOM).emit("order_accepted", payload);
   console.log(
     `✅ Emitted order_accepted for ${payload.orderId} to ${ORDERS_ROOM} room`
+  );
+}
+
+// 👇 NEW: Function to emit to a specific rider
+function emitOrderStatusUpdate(
+  riderId: string,
+  payload: { orderId: string; status: string }
+): void {
+  io.to(riderId).emit("order_status_updated", payload);
+  console.log(
+    `🔔 Emitted order_status_updated for order ${payload.orderId} to rider ${riderId}`
   );
 }
 

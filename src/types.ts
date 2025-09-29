@@ -1,4 +1,8 @@
 // types/socket.ts
+export interface LocationPayload {
+  lat: number;
+  lng: number;
+}
 
 type GeoLocation = {
   lat: number;
@@ -111,10 +115,20 @@ export interface OrderData {
 export interface ServerToClientEvents {
   new_order: (order: OrderData) => void;
   order_accepted: (payload: { orderId: string }) => void;
+  order_status_updated: (payload: { orderId: string; status: string }) => void;
+  rider_location_update: (payload: LocationPayload) => void;
 }
 
 // Events emitted from the Client to the Server
 export interface ClientToServerEvents {
   join_orders_feed: () => void;
   leave_orders_feed: () => void;
+  authenticate_rider: (riderId: string) => void;
+  // 👇 NEW: A customer or rider requests to join an order-specific room
+  join_order_room: (orderId: string) => void;
+  // 👇 NEW: A rider sends their location update to the server
+  rider_sends_batch_location: (payload: {
+    orderIds: string[];
+    location: LocationPayload;
+  }) => void;
 }
