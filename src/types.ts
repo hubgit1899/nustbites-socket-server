@@ -57,6 +57,7 @@ interface OrderPayment {
 interface bankAccount {
   accountNumber: string;
   accountTitle: string;
+
   bankName: string;
 }
 
@@ -124,11 +125,17 @@ export interface ClientToServerEvents {
   join_orders_feed: () => void;
   leave_orders_feed: () => void;
   authenticate_rider: (riderId: string) => void;
-  // 👇 NEW: A customer or rider requests to join an order-specific room
   join_order_room: (orderId: string) => void;
-  // 👇 NEW: A rider sends their location update to the server
   rider_sends_batch_location: (payload: {
     orderIds: string[];
     location: LocationPayload;
   }) => void;
+}
+
+// 👇 NEW: Interface for server-to-server events (can be empty if not used)
+export interface InterServerEvents {}
+
+// 👇 NEW: Interface for custom data attached to each socket instance
+export interface SocketData {
+  riderId: string;
 }
