@@ -23,19 +23,21 @@ io.adapter(redisAdapter);
 
 const app = createApp(io);
 const httpServer = http.createServer(app);
-httpServer.listen(config.PORT, config.HOSTNAME, () => {
-  console.log(`🚀 Server running on ${config.HOSTNAME}:${config.PORT}`);
+
+// Attach the main server to the HTTP server BEFORE listening
+io.attach(httpServer);
+
+// Configure all socket.io event handlers
+setupSocketServer(io);
+
+// Listen only on the PORT Heroku provides, omitting the hostname
+httpServer.listen(config.PORT, () => {
+  console.log(`🚀 Server running on port ${config.PORT}`);
   console.log(`🔒 Accepting connections from: ${config.CLIENT_URL}`);
   if (config.IS_PROD) {
     console.log("🔄 Keep-alive enabled for free tier hosting");
   }
 });
-
-// Attach the main server to the HTTP server AFTER the adapter is set
-io.attach(httpServer);
-
-// Configure all socket.io event handlers
-setupSocketServer(io);
 
 // --- KEEP-ALIVE MECHANISM ---
 if (config.IS_PROD) {
